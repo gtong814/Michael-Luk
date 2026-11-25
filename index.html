@@ -1,198 +1,5 @@
-<!DOCTYPE html>
-<html lang="zh-HK">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>港股通 500 隻全市場掃描 · Martin Luk 策略 Dashboard</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <!-- 新增：引入 SheetJS 用於匯出 Excel (.xlsx) -->
-  <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
-  <style>
-    body { background: #0f172a; color: #e2e8f0; }
-    .card { background: #1e293b; border: 1px solid #334155; }
-    .positive { color: #22c55e; }
-    .negative { color: #ef4444; }
-    .table-container { overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 9px 12px; text-align: left; border-bottom: 1px solid #334155; font-size: 13.5px; white-space: nowrap; }
-    th { background: #1e293b; position: sticky; top: 0; z-index: 10; }
-    tr:hover { background: #263349; }
-    .badge { padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 500; }
-    .setup-pullback { background: #1e3a5f; color: #93c5fd; cursor: pointer; }
-    .setup-leader { background: #14532d; color: #86efac; cursor: pointer; }
-    .setup-none { background: #334155; color: #94a3b8; cursor: pointer; }
-  </style>
-</head>
-<body class="font-sans">
-
-  <!-- Header -->
-  <header class="bg-slate-900 border-b border-slate-700 sticky top-0 z-50">
-    <div class="max-w-7xl mx-auto px-4 py-3.5 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3">
-      <div class="flex items-center gap-3">
-        <i class="fas fa-chart-line text-emerald-400 text-2xl"></i>
-        <div>
-          <h1 class="text-lg sm:text-xl font-bold">港股通 500 隻 · Martin Luk 策略 Dashboard</h1>
-          <p class="text-xs text-slate-400">緊止損 · 高R回調 · 全市場 500 隻分批即時監控</p>
-        </div>
-      </div>
-
-      <div class="flex flex-wrap items-center gap-3 text-sm">
-        <span id="statusBadge" class="badge bg-slate-700 text-slate-300">準備就緒</span>
-        <label class="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer select-none">
-          <input id="autoRefreshToggle" type="checkbox" checked class="accent-emerald-500">
-          自動更新 (60s)
-        </label>
-        <button id="refreshBtn" onclick="fetchAllQuotesBatched()" 
-                class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition">
-          <i id="refreshIcon" class="fas fa-sync-alt"></i> 分批刷新
-        </button>
-        <!-- 新增：匯出 Excel 按鈕 -->
-        <button id="exportExcelBtn" onclick="exportToExcel()" 
-                class="bg-sky-600 hover:bg-sky-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition"
-                title="匯出目前篩選結果為 Excel 檔案">
-          <i class="fas fa-file-excel"></i> 匯出 Excel
-        </button>
-        <div class="text-xs text-slate-400">
-          更新：<span id="updateTime">--</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Batch Progress Bar -->
-    <div id="progressBarContainer" class="w-full bg-slate-800 h-1 hidden">
-      <div id="progressBar" class="bg-emerald-400 h-1 transition-all duration-200" style="width: 0%"></div>
-    </div>
-  </header>
-
-  <main class="max-w-7xl mx-auto px-4 py-6">
-
-    <!-- Strategy Summary -->
-    <div class="card rounded-xl p-5 mb-6">
-      <h2 class="font-bold text-lg mb-2 text-emerald-400">Martin Luk 核心邏輯（應用於港股通 500 隻全掃描）</h2>
-      <div class="grid md:grid-cols-3 gap-4 text-sm">
-        <div>
-          <strong>選股</strong>
-          <ul class="list-disc ml-4 text-slate-300 mt-1">
-            <li>高波幅（日內振幅 / ADR 理想 >5%）</li>
-            <li>強勢領導股 / 主題共振</li>
-            <li>上升中的 9/21 EMA</li>
-          </ul>
-        </div>
-        <div>
-          <strong>進場（Handshake Pullback）</strong>
-          <ul class="list-disc ml-4 text-slate-300 mt-1">
-            <li>有序回調至 9 或 21 EMA + AVWAP</li>
-            <li>日內下殺後重新站上（日內位置 >75%）</li>
-            <li>止損 ≤ 半個 ADR（約 1–1.5%）</li>
-          </ul>
-        </div>
-        <div>
-          <strong>風險與出場</strong>
-          <ul class="list-disc ml-4 text-slate-300 mt-1">
-            <li>單筆風險 0.3–0.5%</li>
-            <li>3–5R 先減 10–15%，止損移成本</li>
-            <li>其餘用日線 9/21 EMA 追蹤</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-
-    <!-- Stats -->
-    <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-      <div class="card rounded-xl p-4">
-        <div class="text-slate-400 text-xs">港股通監控總數</div>
-        <div class="text-2xl font-bold mt-0.5" id="totalStocks">0</div>
-      </div>
-      <div class="card rounded-xl p-4">
-        <div class="text-slate-400 text-xs">高振幅 (≥5%)</div>
-        <div class="text-2xl font-bold text-amber-400 mt-0.5" id="highAdrCount">0</div>
-      </div>
-      <div class="card rounded-xl p-4">
-        <div class="text-slate-400 text-xs">日內強勢收高 (≥80%)</div>
-        <div class="text-2xl font-bold text-emerald-400 mt-0.5" id="strongCloseCount">0</div>
-      </div>
-      <div class="card rounded-xl p-4">
-        <div class="text-slate-400 text-xs">已標記策略股</div>
-        <div class="text-2xl font-bold text-blue-400 mt-0.5" id="pullbackCount">0</div>
-      </div>
-      <div class="card rounded-xl p-4 col-span-2 md:col-span-1">
-        <div class="text-slate-400 text-xs">上漲 / 下跌</div>
-        <div class="text-2xl font-bold mt-0.5"><span class="positive" id="upCount">0</span> / <span class="negative" id="downCount">0</span></div>
-      </div>
-    </div>
-
-    <!-- Filters -->
-    <div class="flex flex-col md:flex-row gap-3 mb-4">
-      <input id="searchInput" type="text" placeholder="搜尋代號或名稱（如：700、騰訊、小米、中芯、機器人...）" 
-             class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-emerald-500">
-      <select id="filterSelect" class="bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm">
-        <option value="all">全部 500 隻</option>
-        <option value="highamp">高振幅 (日內振幅 ≥ 5%)</option>
-        <option value="strongpos">日內收高 (位置 ≥ 80% 且上漲)</option>
-        <option value="pullback">已標記：潛在回調</option>
-        <option value="leader">已標記：強勢領導</option>
-        <option value="active">成交額 ≥ 1億</option>
-      </select>
-      <select id="sortSelect" class="bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm">
-        <option value="amplitude">按日內振幅排序 (高→低)</option>
-        <option value="turnover">按成交額排序 (高→低)</option>
-        <option value="change_desc">按漲幅排序 (高→低)</option>
-        <option value="change_asc">按跌幅排序 (深→淺)</option>
-        <option value="range_pos">按日內區間位置 (高→低)</option>
-        <option value="code">按股份代號排序</option>
-      </select>
-    </div>
-
-    <!-- Table -->
-    <div class="card rounded-xl overflow-hidden">
-      <div class="table-container">
-        <table>
-          <thead>
-            <tr>
-              <th>代號</th>
-              <th>名稱</th>
-              <th>現價 (HKD)</th>
-              <th>漲跌幅</th>
-              <th>成交額</th>
-              <th>日內振幅%</th>
-              <th>日內區間位置</th>
-              <th>最高 / 最低</th>
-              <th>設定類型 (點擊切換)</th>
-              <th>圖表</th>
-            </tr>
-          </thead>
-          <tbody id="tableBody"></tbody>
-        </table>
-      </div>
-
-      <!-- Pagination Controls -->
-      <div class="bg-slate-900/70 px-4 py-3 border-t border-slate-700 flex flex-col sm:flex-row justify-between items-center gap-3 text-xs text-slate-400">
-        <div>
-          顯示第 <span id="pageStart" class="text-white font-medium">0</span> - <span id="pageEnd" class="text-white font-medium">0</span> 筆，共 <span id="filteredTotal" class="text-white font-medium">0</span> 隻符合條件
-        </div>
-        <div class="flex items-center gap-2">
-          <button id="prevPageBtn" onclick="changePage(-1)" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded border border-slate-600 text-slate-200">上一頁</button>
-          <span>第 <span id="currentPageNum" class="text-white font-bold">1</span> / <span id="totalPagesNum">1</span> 頁</span>
-          <button id="nextPageBtn" onclick="changePage(1)" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded border border-slate-600 text-slate-200">下一頁</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="mt-6 text-sm text-slate-500">
-      <p class="font-medium text-slate-400 mb-2">使用提示（Martin Luk 風格）</p>
-      <ul class="list-disc ml-5 space-y-1">
-        <li>已內置 500 隻港股通合資格核心股份，每次打開或點擊「分批刷新」均會自動向騰訊財經接口同步最新現價、漲跌幅、成交額與日內高低點。</li>
-        <li>點擊表格中的「設定類型」徽章可循環標記（<code>+ 標記</code> → <code>潛在回調</code> → <code>強勢領導</code>），標記會自動儲存在本地瀏覽器。</li>
-        <li>點擊右上角「匯出 Excel」可將當前篩選與排序條件下的全部股票（包含個人標記）下載為 <code>.xlsx</code> 檔案。</li>
-        <li>完整官方港股通名單核對：<a href="https://www.hkex.com.hk/mutual-market/stock-connect/eligible-stocks/view-all-eligible-securities?sc_lang=zh-hk" class="text-emerald-400 underline" target="_blank">HKEX</a></li>
-      </ul>
-    </div>
-  </main>
-
-  <script>
-    // 內置 500 隻港股通核心名單（代號|名稱）
-    const RAW_500_LIST = `
+<!-- 將名單放在純文字區塊中，徹底避免引號或特殊字元導致 JS 語法中斷 -->
+  <script type="text/plain" id="rawStockData">
 00001|長和,00002|中電控股,00003|香港中華煤氣,00004|九龍倉集團,00005|匯豐控股,00006|電能實業,00008|電訊盈科,00010|恒隆集團,00011|恒生銀行,00012|恒基地產,
 00013|和黃醫藥,00014|希慎興業,00016|新鴻基地產,00017|新世界發展,00019|太古股份公司A,00020|商湯-W,00023|東亞銀行,00027|銀河娛樂,00034|九龍建業,00035|遠東發展,
 00038|第一拖拉機股份,00041|鷹君,00045|大酒店,00050|香港小輪(集團),00053|國浩集團,00062|載通,00066|港鐵公司,00069|香格里拉(亞洲),00081|中國海外宏洋集團,00083|信和置業,
@@ -244,4 +51,371 @@
 03606|福耀玻璃,03613|同仁堂國藥,03618|重慶農村商業銀行,03633|中裕能源,03668|兗煤澳大利亞,03669|永達汽車,03690|美團-W,03692|翰森製藥,03709|贏家時尚,03738|阜博集團,
 03759|康龍化成,03800|協鑫科技,03808|中國重汽,03813|寶勝國際,03836|和諧汽車,03866|青島銀行,03868|信義能源,03877|中國船舶租賃,03888|金山軟件,03896|金山雲,
 03898|時代電氣,03899|中集安瑞科,03900|綠城中國,03908|中金公司,03918|金界控股,03931|中創新航,03933|聯邦製藥,03958|東方證券,03968|招商銀行,03969|中國通號,
-03983|中海石油化學,03988|中國銀行,03
+03983|中海石油化學,03988|中國銀行,03993|洛陽鉬業,03998|波司登,06030|中信証券,06049|保利物業,06055|中煙香港,06060|眾安在綫,06066|中信建投証券,06069|盛業,
+06078|海吉亞醫療,06088|FIT HON TENG,06098|碧桂園服務,06099|招商證券,06110|滔搏,06127|昭衍新藥,06160|百濟神州,06166|劍橋科技,06178|光大證券,06185|康希諾生物,
+06186|中國飛鶴,06198|青島港,06606|諾輝健康,06608|百融雲-W,06613|藍思科技,06616|環球新材國際,06618|京東健康,06639|瑞爾集團,06655|華新建材,06666|恒大物業,
+06680|金力永磁,06682|第四範式,06690|海爾智家,06699|時代天使,06806|申萬宏源,06808|高鑫零售,06818|中國光大銀行,06821|凱萊英,06823|香港電訊-SS,06830|華眾車載,
+06837|海通證券,06855|亞盛醫藥-B,06862|海底撈,06865|福萊特玻璃,06869|長飛光纖光纜,06881|中國銀河,06886|HTSC,06936|順豐同城,06955|博安生物,06963|陽光保險,
+06969|思摩爾國際,06979|珍酒李渡,06988|樂享集團,06990|科倫博泰生物-B,06993|藍月亮集團,09618|京東集團-SW,09626|嗶哩嗶哩-W,09633|農夫山泉,09658|特海國際,09660|地平線機器人-W,
+09666|金科服務,09668|渤海銀行,09669|北森控股,09677|威海銀行,09688|再鼎醫藥,09690|途虎-W,09696|天齊鋰業,09698|萬國數據-SW,09858|優然牧業,09863|零跑汽車,
+09866|蔚來-SW,09868|小鵬汽車-W,09869|海倫司,09877|健世科技-B,09878|匯通達網絡,09880|優必選,09885|藥師幫,09888|百度集團-SW,09890|中旭未來,09896|名創優品,
+09898|微博-SW,09899|網易雲音樂,09901|新東方-S,09911|赤子城科技,09922|九毛九,09923|移卡,09926|康方生物,09930|洪九果品,09955|智雲健康,09956|安能物流,
+09959|聯易融科技-W,09961|攜程集團-S,09966|康寧傑瑞製藥-B,09969|諾誠健華,09979|綠城管理控股,09985|衛龍美味,09987|百勝中國,09988|阿里巴巴-W,09992|泡泡瑪特,09993|金輝控股,
+09995|榮昌生物,09996|沛嘉醫療-B,09997|康基醫療,09999|網易-S
+  </script>
+
+  <script>
+    const RAW_500_LIST = document.getElementById("rawStockData").textContent;
+    const STORAGE_KEY_TAGS = "hk_connect_500_tags_v1";
+    const BATCH_SIZE = 50;
+    const PAGE_SIZE = 50;
+
+    let userTags = {};
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_TAGS);
+      if (saved) userTags = JSON.parse(saved);
+    } catch (e) {}
+
+    const seenCodes = new Set();
+    const stocks = [];
+    RAW_500_LIST.trim().split(",").forEach(entry => {
+      const clean = entry.trim();
+      if (!clean) return;
+      const [rawCode, rawName] = clean.split("|");
+      const code = rawCode.trim().padStart(5, "0");
+      if (!seenCodes.has(code)) {
+        seenCodes.add(code);
+        stocks.push({
+          code,
+          name: rawName ? rawName.trim() : code,
+          price: 0,
+          prevClose: 0,
+          high: 0,
+          low: 0,
+          change: 0,
+          amplitude: 0,
+          rangePos: 0,
+          turnoverRaw: 0,
+          setup: userTags[code] || "none"
+        });
+      }
+    });
+
+    let filteredStocks = [...stocks];
+    let currentPage = 1;
+    let isFetching = false;
+    let refreshTimer = null;
+
+    function formatTurnover(val) {
+      if (!val || val <= 0) return "--";
+      if (val >= 1e8) return (val / 1e8).toFixed(2) + "億";
+      if (val >= 1e4) return (val / 1e4).toFixed(0) + "萬";
+      return val.toFixed(0);
+    }
+
+    function loadBatchScript(batchStocks) {
+      return new Promise((resolve) => {
+        const queryCodes = batchStocks.map(s => "hk" + s.code).join(",");
+        const script = document.createElement("script");
+        script.charset = "gbk";
+        script.src = `https://qt.gtimg.cn/q=${queryCodes}&_=${Date.now()}`;
+
+        let updated = 0;
+        script.onload = () => {
+          batchStocks.forEach(stock => {
+            const raw = window["v_hk" + stock.code];
+            if (raw) {
+              const p = raw.split("~");
+              const price = parseFloat(p[3]);
+              const prevClose = parseFloat(p[4]);
+              const pctChange = parseFloat(p[32]);
+              const high = parseFloat(p[33]);
+              const low = parseFloat(p[34]);
+              const turnover = parseFloat(p[37]);
+
+              if (!isNaN(price) && price > 0) {
+                stock.price = price;
+                stock.prevClose = prevClose || price;
+                stock.high = high || price;
+                stock.low = low || price;
+                stock.change = !isNaN(pctChange) ? pctChange : (prevClose > 0 ? ((price - prevClose) / prevClose) * 100 : 0);
+                stock.turnoverRaw = !isNaN(turnover) ? turnover : 0;
+
+                if (stock.prevClose > 0 && stock.high >= stock.low) {
+                  stock.amplitude = ((stock.high - stock.low) / stock.prevClose) * 100;
+                } else {
+                  stock.amplitude = 0;
+                }
+
+                if (stock.high > stock.low) {
+                  stock.rangePos = ((stock.price - stock.low) / (stock.high - stock.low)) * 100;
+                } else {
+                  stock.rangePos = 50;
+                }
+                updated++;
+              }
+            }
+          });
+          script.remove();
+          resolve(updated);
+        };
+
+        script.onerror = () => {
+          script.remove();
+          resolve(0);
+        };
+
+        document.body.appendChild(script);
+      });
+    }
+
+    async function fetchAllQuotesBatched() {
+      if (isFetching) return;
+      isFetching = true;
+
+      const icon = document.getElementById("refreshIcon");
+      const statusBadge = document.getElementById("statusBadge");
+      const progressContainer = document.getElementById("progressBarContainer");
+      const progressBar = document.getElementById("progressBar");
+
+      icon.classList.add("fa-spin");
+      progressContainer.classList.remove("hidden");
+      progressBar.style.width = "5%";
+
+      const totalBatches = Math.ceil(stocks.length / BATCH_SIZE);
+      let totalUpdated = 0;
+
+      for (let i = 0; i < totalBatches; i++) {
+        const batch = stocks.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE);
+        statusBadge.className = "badge bg-blue-900 text-blue-200";
+        statusBadge.textContent = `同步中 (${i + 1}/${totalBatches} 批)...`;
+
+        const count = await loadBatchScript(batch);
+        totalUpdated += count;
+
+        const pct = Math.round(((i + 1) / totalBatches) * 100);
+        progressBar.style.width = pct + "%";
+
+        if (i < totalBatches - 1) {
+          await new Promise(r => setTimeout(r, 220));
+        }
+      }
+
+      icon.classList.remove("fa-spin");
+      setTimeout(() => { progressContainer.classList.add("hidden"); }, 500);
+
+      if (totalUpdated > 0) {
+        statusBadge.className = "badge bg-emerald-900 text-emerald-300";
+        statusBadge.textContent = `已連線 (${totalUpdated}/${stocks.length} 隻)`;
+      } else {
+        statusBadge.className = "badge bg-red-900 text-red-200";
+        statusBadge.textContent = "報價連線失敗";
+      }
+
+      document.getElementById("updateTime").textContent = new Date().toLocaleTimeString("zh-HK");
+      isFetching = false;
+      applyFilters(false);
+    }
+
+    function toggleSetup(code) {
+      const stock = stocks.find(s => s.code === code);
+      if (!stock) return;
+
+      const order = ["none", "pullback", "leader"];
+      const next = order[(order.indexOf(stock.setup) + 1) % order.length];
+      stock.setup = next;
+
+      if (next === "none") {
+        delete userTags[code];
+      } else {
+        userTags[code] = next;
+      }
+      localStorage.setItem(STORAGE_KEY_TAGS, JSON.stringify(userTags));
+      applyFilters(false);
+    }
+
+    function getSetupBadge(stock) {
+      if (stock.setup === "pullback") {
+        return `<span onclick="toggleSetup('${stock.code}')" class="badge setup-pullback">潛在回調</span>`;
+      }
+      if (stock.setup === "leader") {
+        return `<span onclick="toggleSetup('${stock.code}')" class="badge setup-leader">強勢領導</span>`;
+      }
+      return `<span onclick="toggleSetup('${stock.code}')" class="badge setup-none">+ 標記</span>`;
+    }
+
+    function formatChange(change) {
+      const sign = change > 0 ? "+" : "";
+      const cls = change > 0 ? "positive" : (change < 0 ? "negative" : "text-slate-400");
+      return `<span class="${cls}">${sign}${change.toFixed(2)}%</span>`;
+    }
+
+    function renderRangeBar(pos) {
+      const clamped = Math.max(0, Math.min(100, pos));
+      const color = clamped >= 80 ? "bg-emerald-400" : (clamped >= 50 ? "bg-blue-400" : "bg-slate-500");
+      return `
+        <div class="flex items-center gap-2">
+          <div class="w-16 bg-slate-700 h-1.5 rounded-full overflow-hidden">
+            <div class="${color} h-1.5" style="width: ${clamped}%"></div>
+          </div>
+          <span class="text-xs font-mono text-slate-300">${clamped.toFixed(0)}%</span>
+        </div>
+      `;
+    }
+
+    function renderTable() {
+      const totalItems = filteredStocks.length;
+      const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+      if (currentPage > totalPages) currentPage = totalPages;
+
+      const startIdx = (currentPage - 1) * PAGE_SIZE;
+      const endIdx = Math.min(startIdx + PAGE_SIZE, totalItems);
+      const pageSlice = filteredStocks.slice(startIdx, endIdx);
+
+      const tbody = document.getElementById("tableBody");
+      tbody.innerHTML = pageSlice.map(s => `
+        <tr>
+          <td class="font-mono font-medium text-slate-200">${s.code}</td>
+          <td class="font-medium">${s.name}</td>
+          <td class="font-mono">${s.price > 0 ? s.price.toFixed(2) : "--"}</td>
+          <td class="font-mono">${s.price > 0 ? formatChange(s.change) : "--"}</td>
+          <td class="text-slate-300 text-xs">${formatTurnover(s.turnoverRaw)}</td>
+          <td class="font-mono ${s.amplitude >= 5 ? 'text-amber-400 font-bold' : 'text-slate-300'}">
+            ${s.price > 0 ? s.amplitude.toFixed(2) + "%" : "--"}
+          </td>
+          <td>${s.price > 0 ? renderRangeBar(s.rangePos) : "--"}</td>
+          <td class="font-mono text-xs text-slate-400">
+            ${s.price > 0 ? `${s.high.toFixed(2)} / ${s.low.toFixed(2)}` : "--"}
+          </td>
+          <td>${getSetupBadge(s)}</td>
+          <td>
+            <a href="https://www.tradingview.com/symbols/HKEX-${s.code}/" target="_blank" 
+               class="text-emerald-400 hover:text-emerald-300 text-sm" title="開啟 TradingView 圖表">
+              <i class="fas fa-chart-candlestick"></i>
+            </a>
+          </td>
+        </tr>
+      `).join("");
+
+      document.getElementById("totalStocks").textContent = stocks.length;
+      document.getElementById("highAdrCount").textContent = stocks.filter(s => s.amplitude >= 5).length;
+      document.getElementById("strongCloseCount").textContent = stocks.filter(s => s.price > 0 && s.rangePos >= 80 && s.change > 0).length;
+      document.getElementById("pullbackCount").textContent = stocks.filter(s => s.setup !== "none").length;
+      document.getElementById("upCount").textContent = stocks.filter(s => s.change > 0).length;
+      document.getElementById("downCount").textContent = stocks.filter(s => s.change < 0).length;
+
+      document.getElementById("pageStart").textContent = totalItems === 0 ? 0 : startIdx + 1;
+      document.getElementById("pageEnd").textContent = endIdx;
+      document.getElementById("filteredTotal").textContent = totalItems;
+      document.getElementById("currentPageNum").textContent = currentPage;
+      document.getElementById("totalPagesNum").textContent = totalPages;
+      document.getElementById("prevPageBtn").disabled = currentPage <= 1;
+      document.getElementById("nextPageBtn").disabled = currentPage >= totalPages;
+    }
+
+    function changePage(delta) {
+      currentPage += delta;
+      renderTable();
+      window.scrollTo({ top: 260, behavior: "smooth" });
+    }
+
+    function applyFilters(resetPage = true) {
+      if (resetPage) currentPage = 1;
+      const q = document.getElementById("searchInput").value.toLowerCase().trim();
+      const filter = document.getElementById("filterSelect").value;
+      const sort = document.getElementById("sortSelect").value;
+
+      filteredStocks = stocks.filter(s => {
+        if (q && !s.code.includes(q) && !s.name.toLowerCase().includes(q)) return false;
+        if (filter === "highamp") return s.amplitude >= 5;
+        if (filter === "strongpos") return s.price > 0 && s.rangePos >= 80 && s.change > 0;
+        if (filter === "pullback") return s.setup === "pullback";
+        if (filter === "leader") return s.setup === "leader";
+        if (filter === "active") return s.turnoverRaw >= 1e8;
+        return true;
+      });
+
+      filteredStocks.sort((a, b) => {
+        if (sort === "amplitude") return b.amplitude - a.amplitude;
+        if (sort === "turnover") return b.turnoverRaw - a.turnoverRaw;
+        if (sort === "change_desc") return b.change - a.change;
+        if (sort === "change_asc") return a.change - b.change;
+        if (sort === "range_pos") return b.rangePos - a.rangePos;
+        if (sort === "code") return a.code.localeCompare(b.code);
+        return 0;
+      });
+
+      renderTable();
+    }
+
+    function exportToExcel() {
+      if (typeof XLSX === "undefined") {
+        alert("Excel 匯出元件尚未載入完成，請檢查網絡連線後再試。");
+        return;
+      }
+
+      if (filteredStocks.length === 0) {
+        alert("目前沒有符合篩選條件的股票可供匯出。");
+        return;
+      }
+
+      const setupLabelMap = {
+        "pullback": "潛在回調",
+        "leader": "強勢領導",
+        "none": "未標記"
+      };
+
+      const rows = filteredStocks.map(s => ({
+        "股份代號": s.code,
+        "股份名稱": s.name,
+        "現價 (HKD)": s.price > 0 ? Number(s.price.toFixed(3)) : "",
+        "昨收 (HKD)": s.prevClose > 0 ? Number(s.prevClose.toFixed(3)) : "",
+        "漲跌幅 (%)": s.price > 0 ? Number(s.change.toFixed(2)) : "",
+        "成交額 (HKD)": s.turnoverRaw > 0 ? Math.round(s.turnoverRaw) : 0,
+        "成交額 (簡寫)": formatTurnover(s.turnoverRaw),
+        "日內振幅 (%)": s.price > 0 ? Number(s.amplitude.toFixed(2)) : "",
+        "日內區間位置 (%)": s.price > 0 ? Math.round(s.rangePos) : "",
+        "日內最高": s.high > 0 ? Number(s.high.toFixed(3)) : "",
+        "日內最低": s.low > 0 ? Number(s.low.toFixed(3)) : "",
+        "策略標記": setupLabelMap[s.setup] || "未標記",
+        "TradingView 連結": `https://www.tradingview.com/symbols/HKEX-${s.code}/`
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(rows);
+      worksheet["!cols"] = [
+        { wch: 10 }, { wch: 18 }, { wch: 12 }, { wch: 12 },
+        { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 14 },
+        { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 46 }
+      ];
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "港股通掃描結果");
+
+      const filterSelect = document.getElementById("filterSelect");
+      const filterText = filterSelect.options[filterSelect.selectedIndex].text.split(" ")[0].replace(/[：:]/g, "");
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const timeStr = `${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
+      const filename = `港股通掃描_${filterText}_${dateStr}_${timeStr}.xlsx`;
+
+      XLSX.writeFile(workbook, filename);
+    }
+
+    document.getElementById("searchInput").addEventListener("input", () => applyFilters(true));
+    document.getElementById("filterSelect").addEventListener("change", () => applyFilters(true));
+    document.getElementById("sortSelect").addEventListener("change", () => applyFilters(true));
+
+    document.getElementById("autoRefreshToggle").addEventListener("change", (e) => {
+      if (e.target.checked) startAutoRefresh();
+      else clearInterval(refreshTimer);
+    });
+
+    function startAutoRefresh() {
+      clearInterval(refreshTimer);
+      refreshTimer = setInterval(fetchAllQuotesBatched, 60000);
+    }
+
+    applyFilters(true);
+    fetchAllQuotesBatched();
+    startAutoRefresh();
+  </script>
