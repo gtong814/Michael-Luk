@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>港股通 Dashboard · Martin Luk 策略</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    body { background: #0f172a; color: #e2e8f0; }
+    .card { background: #1e293b; border: 1px solid #334155; }
+    .positive { color: #22c55e; }
+    .negative { color: #ef4444; }
+    .table-container { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #334155; font-size: 14px; }
+    th { background: #1e293b; position: sticky; top: 0; cursor: pointer; }
+    tr:hover { background: #334155; }
+    .badge { padding: 2px 8px; border-radius: 9999px; font-size: 11px; }
+    .setup-pullback { background: #1e3a5f; color: #93c5fd; }
+    .setup-leader { background: #14532d; color: #86efac; }
+  </style>
+</head>
+<body class="font-sans">
+
+  <!-- Header -->
+  <header class="bg-slate-900 border-b border-slate-700 sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+      <div class="flex items-center gap-3">
+        <i class="fas fa-chart-line text-emerald-400 text-2xl"></i>
+        <div>
+          <h1 class="text-xl font-bold">港股通 · Martin Luk 策略 Dashboard</h1>
+          <p class="text-xs text-slate-400">緊止損 · 高R回調 · 南向資金觀察</p>
+        </div>
+      </div>
+      <div class="text-sm text-slate-400">
+        更新：<span id="updateTime">--</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-6">
+
+    <!-- Strategy Summary -->
+    <div class="card rounded-xl p-5 mb-6">
+      <h2 class="font-bold text-lg mb-2 text-emerald-400">Martin Luk 核心邏輯（應用於港股通）</h2>
+      <div class="grid md:grid-cols-3 gap-4 text-sm">
+        <div>
+          <strong>選股</strong>
+          <ul class="list-disc ml-4 text-slate-300 mt-1">
+            <li>高 ADR（理想 >5%）</li>
+            <li>強勢領導股 / 主題共振</li>
+            <li>上升中的 9/21 EMA</li>
+          </ul>
+        </div>
+        <div>
+          <strong>進場（Handshake Pullback）</strong>
+          <ul class="list-disc ml-4 text-slate-300 mt-1">
+            <li>有序回調至 9 或 21 EMA + AVWAP</li>
+            <li>日內下殺後重新站上</li>
+            <li>止損 ≤ 半個 ADR（約 1–1.5%）</li>
+          </ul>
+        </div>
+        <div>
+          <strong>風險與出場</strong>
+          <ul class="list-disc ml-4 text-slate-300 mt-1">
+            <li>單筆風險 0.3–0.5%</li>
+            <li>3–5R 先減 10–15%，止損移成本</li>
+            <li>其餘用日線 9/21 EMA 追蹤</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div class="card rounded-xl p-4">
+        <div class="text-slate-400 text-sm">監控股份</div>
+        <div class="text-2xl font-bold" id="totalStocks">0</div>
+      </div>
+      <div class="card rounded-xl p-4">
+        <div class="text-slate-400 text-sm">潛在回調</div>
+        <div class="text-2xl font-bold text-blue-400" id="pullbackCount">0</div>
+      </div>
+      <div class="card rounded-xl p-4">
+        <div class="text-slate-400 text-sm">高 ADR (>5%)</div>
+        <div class="text-2xl font-bold text-amber-400" id="highAdrCount">0</div>
+      </div>
+      <div class="card rounded-xl p-4">
+        <div class="text-slate-400 text-sm">上漲 / 下跌</div>
+        <div class="text-2xl font-bold"><span class="positive" id="upCount">0</span> / <span class="negative" id="downCount">0</span></div>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="flex flex-col md:flex-row gap-3 mb-4">
+      <input id="searchInput" type="text" placeholder="搜尋代號或名稱（700、騰訊、中芯...）" 
+             class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 focus:outline-none focus:border-emerald-500">
+      <select id="filterSelect" class="bg-slate-800 border border-slate-600 rounded-lg px-4 py-2">
+        <option value="all">全部</option>
+        <option value="pullback">潛在回調設定</option>
+        <option value="leader">強勢領導</option>
+        <option value="highadr">高 ADR >5%</option>
+      </select>
+      <select id="sortSelect" class="bg-slate-800 border border-slate-600 rounded-lg px-4 py-2">
+        <option value="adr">按 ADR 排序</option>
+        <option value="change">按漲跌幅</option>
+        <option value="setup">按設定類型</option>
+      </select>
+    </div>
+
+    <!-- Table -->
+    <div class="card rounded-xl overflow-hidden">
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>代號</th>
+              <th>名稱</th>
+              <th>現價</th>
+              <th>漲跌幅</th>
+              <th>ADR%</th>
+              <th>設定類型</th>
+              <th>EMA 位置</th>
+              <th>南向持倉</th>
+              <th>圖表</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="mt-6 text-sm text-slate-500">
+      <p class="font-medium text-slate-400 mb-2">使用提示（Martin Luk 風格）</p>
+      <ul class="list-disc ml-5 space-y-1">
+        <li>優先關注「潛在回調」+ 高 ADR 的股份，然後手動看日線是否有序回調至 9/21 EMA。</li>
+        <li>進場前在分時圖確認 AVWAP 收復 + 當日低點止損是否 ≤ 半個 ADR。</li>
+        <li>完整官方港股通名單：<a href="https://www.hkex.com.hk/mutual-market/stock-connect/eligible-stocks/view-all-eligible-securities?sc_lang=zh-hk" class="text-emerald-400 underline" target="_blank">HKEX</a></li>
+        <li>數據為示範用途，實際交易請以實時圖表為準。</li>
+      </ul>
+    </div>
+  </main>
+
+  <script>
+    const stocks = [
+      { code: "00700", name: "騰訊控股", price: 341.6, change: -0.70, adr: 3.2, setup: "leader", ema: "衝浪9EMA", holding: "高", turnover: "43億" },
+      { code: "09988", name: "阿里巴巴-W", price: 82.2, change: -1.02, adr: 4.1, setup: "pullback", ema: "近21EMA", holding: "高", turnover: "32億" },
+      { code: "01810", name: "小米集團-W", price: 18.5, change: -3.71, adr: 5.8, setup: "pullback", ema: "近9EMA", holding: "中", turnover: "30億" },
+      { code: "00981", name: "中芯國際", price: 28.5, change: 0.53, adr: 6.2, setup: "leader", ema: "衝浪9/21", holding: "高", turnover: "37億" },
+      { code: "01347", name: "華虹宏力", price: 25.8, change: 1.55, adr: 7.5, setup: "leader", ema: "衝浪9EMA", holding: "中", turnover: "49億" },
+      { code: "03690", name: "美團-W", price: 125.0, change: 0.80, adr: 4.8, setup: "pullback", ema: "近21EMA", holding: "高", turnover: "18億" },
+      { code: "00941", name: "中國移動", price: 78.8, change: 0.50, adr: 1.8, setup: "leader", ema: "衝浪21", holding: "極高", turnover: "13億" },
+      { code: "01088", name: "中國神華", price: 38.5, change: -0.40, adr: 2.5, setup: "pullback", ema: "近9EMA", holding: "極高", turnover: "9億" },
+      { code: "02318", name: "中國平安", price: 48.2, change: 0.30, adr: 2.9, setup: "leader", ema: "衝浪21", holding: "高", turnover: "15億" },
+      { code: "02899", name: "紫金礦業", price: 18.6, change: 1.20, adr: 4.5, setup: "leader", ema: "衝浪9EMA", holding: "高", turnover: "14億" },
+      { code: "02015", name: "理想汽車-W", price: 95.0, change: -1.50, adr: 6.8, setup: "pullback", ema: "近21EMA", holding: "中", turnover: "9億" },
+      { code: "09868", name: "小鵬汽車-W", price: 52.0, change: 2.10, adr: 8.2, setup: "leader", ema: "衝浪9EMA", holding: "中", turnover: "6億" },
+      { code: "06613", name: "藍思科技", price: 12.8, change: 0.90, adr: 5.5, setup: "pullback", ema: "近9EMA", holding: "中", turnover: "5億" },
+      { code: "02382", name: "舜宇光學", price: 62.5, change: 1.10, adr: 5.1, setup: "leader", ema: "衝浪9/21", holding: "中", turnover: "6億" },
+      { code: "00992", name: "聯想集團", price: 10.2, change: 0.40, adr: 3.8, setup: "pullback", ema: "近21EMA", holding: "中", turnover: "7億" },
+      { code: "00883", name: "中國海洋石油", price: 18.9, change: -1.97, adr: 3.5, setup: "pullback", ema: "近9EMA", holding: "高", turnover: "34億" },
+      { code: "03968", name: "招商銀行", price: 42.5, change: 0.60, adr: 2.2, setup: "leader", ema: "衝浪21", holding: "高", turnover: "6億" },
+      { code: "06166", name: "劍橋科技", price: 57.2, change: -1.97, adr: 9.5, setup: "leader", ema: "衝浪9EMA", holding: "極高", turnover: "17億" },
+      { code: "02269", name: "藥明生物", price: 28.5, change: -1.20, adr: 5.3, setup: "pullback", ema: "近21EMA", holding: "高", turnover: "5億" },
+      { code: "00388", name: "香港交易所", price: 310.0, change: 0.20, adr: 2.8, setup: "leader", ema: "衝浪21", holding: "中", turnover: "11億" },
+    ];
+
+    let filteredStocks = [...stocks];
+
+    function getSetupBadge(setup) {
+      if (setup === "pullback") return '<span class="badge setup-pullback">潛在回調</span>';
+      if (setup === "leader") return '<span class="badge setup-leader">強勢領導</span>';
+      return '<span class="badge bg-slate-700">一般</span>';
+    }
+
+    function formatChange(change) {
+      const sign = change >= 0 ? "+" : "";
+      const cls = change >= 0 ? "positive" : "negative";
+      return `<span class="${cls}">${sign}${change.toFixed(2)}%</span>`;
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById("tableBody");
+      tbody.innerHTML = filteredStocks.map(s => `
+        <tr>
+          <td class="font-mono font-medium">${s.code}</td>
+          <td>${s.name}</td>
+          <td>${s.price.toFixed(1)}</td>
+          <td>${formatChange(s.change)}</td>
+          <td class="${s.adr >= 5 ? 'text-amber-400 font-medium' : ''}">${s.adr.toFixed(1)}%</td>
+          <td>${getSetupBadge(s.setup)}</td>
+          <td class="text-xs">${s.ema}</td>
+          <td><span class="badge ${s.holding === '極高' ? 'bg-red-900 text-red-200' : s.holding === '高' ? 'bg-amber-900 text-amber-200' : 'bg-slate-700'}">${s.holding}</span></td>
+          <td>
+            <a href="https://www.tradingview.com/symbols/HKEX-${s.code}/" target="_blank" 
+               class="text-emerald-400 hover:underline text-sm">
+              <i class="fas fa-chart-candlestick"></i>
+            </a>
+          </td>
+        </tr>
+      `).join("");
+
+      document.getElementById("totalStocks").textContent = filteredStocks.length;
+      document.getElementById("pullbackCount").textContent = filteredStocks.filter(s => s.setup === "pullback").length;
+      document.getElementById("highAdrCount").textContent = filteredStocks.filter(s => s.adr >= 5).length;
+      document.getElementById("upCount").textContent = filteredStocks.filter(s => s.change > 0).length;
+      document.getElementById("downCount").textContent = filteredStocks.filter(s => s.change < 0).length;
+    }
+
+    // Search
+    document.getElementById("searchInput").addEventListener("input", (e) => {
+      applyFilters();
+    });
+
+    document.getElementById("filterSelect").addEventListener("change", applyFilters);
+    document.getElementById("sortSelect").addEventListener("change", applyFilters);
+
+    function applyFilters() {
+      const q = document.getElementById("searchInput").value.toLowerCase();
+      const filter = document.getElementById("filterSelect").value;
+      const sort = document.getElementById("sortSelect").value;
+
+      filteredStocks = stocks.filter(s => {
+        const matchSearch = s.code.includes(q) || s.name.toLowerCase().includes(q);
+        if (!matchSearch) return false;
+        if (filter === "pullback") return s.setup === "pullback";
+        if (filter === "leader") return s.setup === "leader";
+        if (filter === "highadr") return s.adr >= 5;
+        return true;
+      });
+
+      filteredStocks.sort((a, b) => {
+        if (sort === "adr") return b.adr - a.adr;
+        if (sort === "change") return b.change - a.change;
+        if (sort === "setup") return a.setup.localeCompare(b.setup);
+        return 0;
+      });
+
+      renderTable();
+    }
+
+    document.getElementById("updateTime").textContent = new Date().toLocaleString("zh-HK");
+    renderTable();
+  </script>
+</body>
+</html>
