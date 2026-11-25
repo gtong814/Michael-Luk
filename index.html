@@ -14,7 +14,7 @@
     .table-container { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; }
     th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #334155; font-size: 14px; }
-    th { background: #1e293b; position: sticky; top: 0; cursor: pointer; }
+    th { background: #1e293b; position: sticky; top: 0; }
     tr:hover { background: #334155; }
     .badge { padding: 2px 8px; border-radius: 9999px; font-size: 11px; }
     .setup-pullback { background: #1e3a5f; color: #93c5fd; }
@@ -25,7 +25,7 @@
 
   <!-- Header -->
   <header class="bg-slate-900 border-b border-slate-700 sticky top-0 z-50">
-    <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
       <div class="flex items-center gap-3">
         <i class="fas fa-chart-line text-emerald-400 text-2xl"></i>
         <div>
@@ -33,8 +33,19 @@
           <p class="text-xs text-slate-400">緊止損 · 高R回調 · 南向資金觀察</p>
         </div>
       </div>
-      <div class="text-sm text-slate-400">
-        更新：<span id="updateTime">--</span>
+      <div class="flex flex-wrap items-center gap-3 text-sm">
+        <span id="statusBadge" class="badge bg-slate-700 text-slate-300">載入行情中...</span>
+        <label class="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer select-none">
+          <input id="autoRefreshToggle" type="checkbox" checked class="accent-emerald-500">
+          自動更新 (30s)
+        </label>
+        <button id="refreshBtn" onclick="fetchLiveQuotes()" 
+                class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition">
+          <i id="refreshIcon" class="fas fa-sync-alt"></i> 刷新
+        </button>
+        <div class="text-xs text-slate-400">
+          更新：<span id="updateTime">--</span>
+        </div>
       </div>
     </div>
   </header>
@@ -94,7 +105,7 @@
 
     <!-- Filters -->
     <div class="flex flex-col md:flex-row gap-3 mb-4">
-      <input id="searchInput" type="text" placeholder="搜尋代號或名稱（700、騰訊、中芯...）" 
+      <input id="searchInput" type="text" placeholder="搜尋代號或名稱（700、騰訊、小米、中芯...）" 
              class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 focus:outline-none focus:border-emerald-500">
       <select id="filterSelect" class="bg-slate-800 border border-slate-600 rounded-lg px-4 py-2">
         <option value="all">全部</option>
@@ -117,8 +128,9 @@
             <tr>
               <th>代號</th>
               <th>名稱</th>
-              <th>現價</th>
+              <th>現價 (HKD)</th>
               <th>漲跌幅</th>
+              <th>成交額</th>
               <th>ADR%</th>
               <th>設定類型</th>
               <th>EMA 位置</th>
@@ -134,20 +146,20 @@
     <div class="mt-6 text-sm text-slate-500">
       <p class="font-medium text-slate-400 mb-2">使用提示（Martin Luk 風格）</p>
       <ul class="list-disc ml-5 space-y-1">
-        <li>優先關注「潛在回調」+ 高 ADR 的股份，然後手動看日線是否有序回調至 9/21 EMA。</li>
-        <li>進場前在分時圖確認 AVWAP 收復 + 當日低點止損是否 ≤ 半個 ADR。</li>
+        <li>現價、漲跌幅與成交額已串接騰訊財經行情接口自動更新；ADR%、EMA 位置與設定類型可按每日覆盤手動微調。</li>
+        <li>優先關注「潛在回調」+ 高 ADR 的股份，進場前在分時圖確認 AVWAP 收復 + 當日低點止損是否 ≤ 半個 ADR。</li>
         <li>完整官方港股通名單：<a href="https://www.hkex.com.hk/mutual-market/stock-connect/eligible-stocks/view-all-eligible-securities?sc_lang=zh-hk" class="text-emerald-400 underline" target="_blank">HKEX</a></li>
-        <li>數據為示範用途，實際交易請以實時圖表為準。</li>
       </ul>
     </div>
   </main>
 
   <script>
+    // 備用初始數據（當離線或接口暫時無法連線時顯示）
     const stocks = [
-      { code: "00700", name: "騰訊控股", price: 341.6, change: -0.70, adr: 3.2, setup: "leader", ema: "衝浪9EMA", holding: "高", turnover: "43億" },
+      { code: "00700", name: "騰訊控股", price: 344.0, change: 0.00, adr: 3.2, setup: "leader", ema: "衝浪9EMA", holding: "高", turnover: "43億" },
       { code: "09988", name: "阿里巴巴-W", price: 82.2, change: -1.02, adr: 4.1, setup: "pullback", ema: "近21EMA", holding: "高", turnover: "32億" },
-      { code: "01810", name: "小米集團-W", price: 18.5, change: -3.71, adr: 5.8, setup: "pullback", ema: "近9EMA", holding: "中", turnover: "30億" },
-      { code: "00981", name: "中芯國際", price: 28.5, change: 0.53, adr: 6.2, setup: "leader", ema: "衝浪9/21", holding: "高", turnover: "37億" },
+      { code: "01810", name: "小米集團-W", price: 26.5, change: -3.71, adr: 5.8, setup: "pullback", ema: "近9EMA", holding: "中", turnover: "30億" },
+      { code: "00981", name: "中芯國際", price: 47.4, change: 0.53, adr: 6.2, setup: "leader", ema: "衝浪9/21", holding: "高", turnover: "37億" },
       { code: "01347", name: "華虹宏力", price: 25.8, change: 1.55, adr: 7.5, setup: "leader", ema: "衝浪9EMA", holding: "中", turnover: "49億" },
       { code: "03690", name: "美團-W", price: 125.0, change: 0.80, adr: 4.8, setup: "pullback", ema: "近21EMA", holding: "高", turnover: "18億" },
       { code: "00941", name: "中國移動", price: 78.8, change: 0.50, adr: 1.8, setup: "leader", ema: "衝浪21", holding: "極高", turnover: "13億" },
@@ -158,15 +170,86 @@
       { code: "09868", name: "小鵬汽車-W", price: 52.0, change: 2.10, adr: 8.2, setup: "leader", ema: "衝浪9EMA", holding: "中", turnover: "6億" },
       { code: "06613", name: "藍思科技", price: 12.8, change: 0.90, adr: 5.5, setup: "pullback", ema: "近9EMA", holding: "中", turnover: "5億" },
       { code: "02382", name: "舜宇光學", price: 62.5, change: 1.10, adr: 5.1, setup: "leader", ema: "衝浪9/21", holding: "中", turnover: "6億" },
-      { code: "00992", name: "聯想集團", price: 10.2, change: 0.40, adr: 3.8, setup: "pullback", ema: "近21EMA", holding: "中", turnover: "7億" },
+      { code: "00992", name: "聯想集團", price: 16.35, change: 0.40, adr: 3.8, setup: "pullback", ema: "近21EMA", holding: "中", turnover: "7億" },
       { code: "00883", name: "中國海洋石油", price: 18.9, change: -1.97, adr: 3.5, setup: "pullback", ema: "近9EMA", holding: "高", turnover: "34億" },
       { code: "03968", name: "招商銀行", price: 42.5, change: 0.60, adr: 2.2, setup: "leader", ema: "衝浪21", holding: "高", turnover: "6億" },
       { code: "06166", name: "劍橋科技", price: 57.2, change: -1.97, adr: 9.5, setup: "leader", ema: "衝浪9EMA", holding: "極高", turnover: "17億" },
       { code: "02269", name: "藥明生物", price: 28.5, change: -1.20, adr: 5.3, setup: "pullback", ema: "近21EMA", holding: "高", turnover: "5億" },
-      { code: "00388", name: "香港交易所", price: 310.0, change: 0.20, adr: 2.8, setup: "leader", ema: "衝浪21", holding: "中", turnover: "11億" },
+      { code: "00388", name: "香港交易所", price: 345.4, change: 0.20, adr: 2.8, setup: "leader", ema: "衝浪21", holding: "中", turnover: "11億" },
     ];
 
     let filteredStocks = [...stocks];
+    let refreshTimer = null;
+
+    function formatTurnover(amountInHKD) {
+      if (!amountInHKD || isNaN(amountInHKD)) return "--";
+      if (amountInHKD >= 1e8) return (amountInHKD / 1e8).toFixed(1) + "億";
+      if (amountInHKD >= 1e4) return (amountInHKD / 1e4).toFixed(0) + "萬";
+      return amountInHKD.toFixed(0);
+    }
+
+    // 透過 Script 注入抓取值（避開 CORS 限制）
+    function fetchLiveQuotes() {
+      const icon = document.getElementById("refreshIcon");
+      const statusBadge = document.getElementById("statusBadge");
+      icon.classList.add("fa-spin");
+
+      const oldScript = document.getElementById("tencentQuoteScript");
+      if (oldScript) oldScript.remove();
+
+      const queryCodes = stocks.map(s => "hk" + s.code).join(",");
+      const script = document.createElement("script");
+      script.id = "tencentQuoteScript";
+      script.charset = "gbk";
+      script.src = `https://qt.gtimg.cn/q=${queryCodes}&_=${Date.now()}`;
+
+      script.onload = () => {
+        let updatedCount = 0;
+        stocks.forEach(stock => {
+          const raw = window["v_hk" + stock.code];
+          if (raw) {
+            const parts = raw.split("~");
+            const latestPrice = parseFloat(parts[3]);
+            const prevClose = parseFloat(parts[4]);
+            const pctChange = parseFloat(parts[32]);
+            const turnoverAmount = parseFloat(parts[37]); // 港股接口字段37通常為成交額(元)
+
+            if (!isNaN(latestPrice) && latestPrice > 0) {
+              stock.price = latestPrice;
+              if (!isNaN(pctChange)) {
+                stock.change = pctChange;
+              } else if (!isNaN(prevClose) && prevClose > 0) {
+                stock.change = ((latestPrice - prevClose) / prevClose) * 100;
+              }
+              if (!isNaN(turnoverAmount) && turnoverAmount > 0) {
+                stock.turnover = formatTurnover(turnoverAmount);
+              }
+              updatedCount++;
+            }
+          }
+        });
+
+        icon.classList.remove("fa-spin");
+        if (updatedCount > 0) {
+          statusBadge.className = "badge bg-emerald-900 text-emerald-300";
+          statusBadge.textContent = `即時報價已連線 (${updatedCount}/${stocks.length})`;
+        } else {
+          statusBadge.className = "badge bg-amber-900 text-amber-200";
+          statusBadge.textContent = "使用備用報價";
+        }
+        document.getElementById("updateTime").textContent = new Date().toLocaleTimeString("zh-HK");
+        applyFilters();
+      };
+
+      script.onerror = () => {
+        icon.classList.remove("fa-spin");
+        statusBadge.className = "badge bg-red-900 text-red-200";
+        statusBadge.textContent = "行情連線失敗 (顯示備用數據)";
+        applyFilters();
+      };
+
+      document.body.appendChild(script);
+    }
 
     function getSetupBadge(setup) {
       if (setup === "pullback") return '<span class="badge setup-pullback">潛在回調</span>';
@@ -176,7 +259,7 @@
 
     function formatChange(change) {
       const sign = change >= 0 ? "+" : "";
-      const cls = change >= 0 ? "positive" : "negative";
+      const cls = change > 0 ? "positive" : (change < 0 ? "negative" : "text-slate-300");
       return `<span class="${cls}">${sign}${change.toFixed(2)}%</span>`;
     }
 
@@ -186,15 +269,16 @@
         <tr>
           <td class="font-mono font-medium">${s.code}</td>
           <td>${s.name}</td>
-          <td>${s.price.toFixed(1)}</td>
-          <td>${formatChange(s.change)}</td>
+          <td class="font-mono">${s.price.toFixed(2)}</td>
+          <td class="font-mono">${formatChange(s.change)}</td>
+          <td class="text-slate-300 text-xs">${s.turnover}</td>
           <td class="${s.adr >= 5 ? 'text-amber-400 font-medium' : ''}">${s.adr.toFixed(1)}%</td>
           <td>${getSetupBadge(s.setup)}</td>
           <td class="text-xs">${s.ema}</td>
           <td><span class="badge ${s.holding === '極高' ? 'bg-red-900 text-red-200' : s.holding === '高' ? 'bg-amber-900 text-amber-200' : 'bg-slate-700'}">${s.holding}</span></td>
           <td>
             <a href="https://www.tradingview.com/symbols/HKEX-${s.code}/" target="_blank" 
-               class="text-emerald-400 hover:underline text-sm">
+               class="text-emerald-400 hover:underline text-sm" title="在 TradingView 查看">
               <i class="fas fa-chart-candlestick"></i>
             </a>
           </td>
@@ -208,13 +292,22 @@
       document.getElementById("downCount").textContent = filteredStocks.filter(s => s.change < 0).length;
     }
 
-    // Search
-    document.getElementById("searchInput").addEventListener("input", (e) => {
-      applyFilters();
-    });
-
+    document.getElementById("searchInput").addEventListener("input", applyFilters);
     document.getElementById("filterSelect").addEventListener("change", applyFilters);
     document.getElementById("sortSelect").addEventListener("change", applyFilters);
+
+    document.getElementById("autoRefreshToggle").addEventListener("change", (e) => {
+      if (e.target.checked) {
+        startAutoRefresh();
+      } else {
+        clearInterval(refreshTimer);
+      }
+    });
+
+    function startAutoRefresh() {
+      clearInterval(refreshTimer);
+      refreshTimer = setInterval(fetchLiveQuotes, 30000);
+    }
 
     function applyFilters() {
       const q = document.getElementById("searchInput").value.toLowerCase();
@@ -240,8 +333,10 @@
       renderTable();
     }
 
-    document.getElementById("updateTime").textContent = new Date().toLocaleString("zh-HK");
-    renderTable();
+    // 初始化渲染並抓取最新報價
+    applyFilters();
+    fetchLiveQuotes();
+    startAutoRefresh();
   </script>
 </body>
 </html>
