@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>港股通 500 隻全市場掃描 · Martin Luk 策略 Dashboard</title>
+  <title>港股通全市場掃描 · Martin Luk 策略 Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
@@ -21,6 +21,8 @@
     .setup-strong { background: #4c1d95; color: #ddd6fe; cursor: pointer; }
     .setup-pullback { background: #1e3a5f; color: #93c5fd; cursor: pointer; }
     .setup-leader { background: #14532d; color: #86efac; cursor: pointer; }
+    .setup-watch { background: #78350f; color: #fde68a; cursor: pointer; }
+    .setup-weak { background: #450a0a; color: #fca5a5; cursor: pointer; }
     .setup-none { background: #334155; color: #94a3b8; cursor: pointer; }
   </style>
 </head>
@@ -32,8 +34,8 @@
       <div class="flex items-center gap-3">
         <i class="fas fa-chart-line text-emerald-400 text-2xl"></i>
         <div>
-          <h1 class="text-lg sm:text-xl font-bold">港股通 500 隻 · Martin Luk 策略 Dashboard</h1>
-          <p class="text-xs text-slate-400">緊止損 · 高R回調 · 全市場 500 隻分批即時監控（自動訊號識別）</p>
+          <h1 class="text-lg sm:text-xl font-bold">港股通全市場 · Martin Luk 策略 Dashboard</h1>
+          <p class="text-xs text-slate-400">緊止損 · 高R回調 · 全市場分批即時監控（全自動狀態分類）</p>
         </div>
       </div>
 
@@ -68,7 +70,7 @@
 
     <!-- Strategy Summary -->
     <div class="card rounded-xl p-5 mb-6">
-      <h2 class="font-bold text-lg mb-2 text-emerald-400">Martin Luk 核心邏輯（應用於港股通 500 隻全掃描）</h2>
+      <h2 class="font-bold text-lg mb-2 text-emerald-400">Martin Luk 核心邏輯（應用於港股通全市場掃描）</h2>
       <div class="grid md:grid-cols-3 gap-4 text-sm">
         <div>
           <strong>選股</strong>
@@ -112,7 +114,7 @@
         <div class="text-2xl font-bold text-emerald-400 mt-0.5" id="strongCloseCount">0</div>
       </div>
       <div class="card rounded-xl p-4">
-        <div class="text-slate-400 text-xs">策略訊號股 (自動+手動)</div>
+        <div class="text-slate-400 text-xs">強勢 / 回調買入訊號</div>
         <div class="text-2xl font-bold text-purple-400 mt-0.5" id="pullbackCount">0</div>
       </div>
       <div class="card rounded-xl p-4 col-span-2 md:col-span-1">
@@ -126,12 +128,14 @@
       <input id="searchInput" type="text" placeholder="搜尋代號或名稱（如：700、騰訊、小米、中芯、機器人...）" 
              class="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-emerald-500">
       <select id="filterSelect" class="bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm">
-        <option value="all">全部 500 隻</option>
-        <option value="auto_strong">自動訊號：日內強勢 (振幅≥5% & 位置≥80%)</option>
+        <option value="all">全部監控股份</option>
+        <option value="auto_strong">⚡ 日內強勢 (振幅≥5% & 位置≥80%)</option>
+        <option value="pullback">⚡ 潛在回調 (自動 + 手動)</option>
+        <option value="leader">★ 強勢領導 (手動標記)</option>
+        <option value="auto_watch">震盪觀察 (站穩中軸上方)</option>
+        <option value="auto_weak">偏弱 / 下殺 (下跌或位置<50%)</option>
         <option value="highamp">高振幅 (日內振幅 ≥ 5%)</option>
         <option value="strongpos">日內收高 (位置 ≥ 80% 且上漲)</option>
-        <option value="pullback">潛在回調 (自動 + 手動)</option>
-        <option value="leader">已標記：強勢領導 (手動)</option>
         <option value="active">成交額 ≥ 1億</option>
       </select>
       <select id="sortSelect" class="bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm">
@@ -158,7 +162,7 @@
               <th>日內振幅%</th>
               <th>日內區間位置</th>
               <th>最高 / 最低</th>
-              <th>設定類型 (自動識別 / 點擊覆蓋)</th>
+              <th>策略狀態分類 (點擊手動鎖定)</th>
               <th>圖表</th>
             </tr>
           </thead>
@@ -180,12 +184,13 @@
     </div>
 
     <div class="mt-6 text-sm text-slate-500">
-      <p class="font-medium text-slate-400 mb-2">使用提示（Martin Luk 風格）</p>
+      <p class="font-medium text-slate-400 mb-2">全自動分類說明（Martin Luk 風格）</p>
       <ul class="list-disc ml-5 space-y-1">
-        <li><strong>自動訊號識別</strong>：高振幅（≥5%）且上漲的股份，若日內區間位置 ≥80% 自動標為 <span class="text-purple-300">日內強勢</span>；位置介乎 65%–79% 則自動標為 <span class="text-blue-300">潛在回調</span>。</li>
-        <li><strong>手動覆蓋標記</strong>：點擊任何股份的徽章可手動鎖定標記（<code>潛在回調</code> → <code>強勢領導</code> → <code>清除手動標記</code>），手動標記會儲存在本地瀏覽器並優先顯示。</li>
-        <li>點擊右上角「匯出 Excel」可將當前篩選與排序條件下的全部股票（包含自動與手動分類）下載為 <code>.xlsx</code> 檔案。</li>
-        <li>完整官方港股通名單核對：<a href="https://www.hkex.com.hk/mutual-market/stock-connect/eligible-stocks/view-all-eligible-securities?sc_lang=zh-hk" class="text-emerald-400 underline" target="_blank">HKEX</a></li>
+        <li><span class="text-purple-300 font-medium">⚡ 日內強勢</span>：高振幅（≥5%）+ 上漲 + 日內區間位置 ≥80%（強勢收高突破）。</li>
+        <li><span class="text-blue-300 font-medium">⚡ 潛在回調</span>：高振幅（≥5%）+ 上漲 + 日內區間位置 65%–79%（下殺後反彈站穩）。</li>
+        <li><span class="text-amber-200 font-medium">震盪觀察</span>：當日上漲或平盤且現價位於日內區間 ≥50%，但尚未觸發高波幅買入條件。</li>
+        <li><span class="text-red-300 font-medium">偏弱 / 下殺</span>：當日下跌或現價跌破日內區間中軸（&lt;50%）。</li>
+        <li>點擊任意徽章可手動鎖定為 <span class="text-blue-300">潛在回調 ★</span> 或 <span class="text-emerald-300">強勢領導 ★</span>，再點一次即恢復自動分類；按「匯出 Excel」可下載完整分類報表。</li>
       </ul>
     </div>
   </main>
@@ -299,20 +304,20 @@
     let isFetching = false;
     let refreshTimer = null;
 
-    // 根據當日行情自動判定初步策略訊號
+    // 全自動分類判定邏輯
     function evaluateSetup(stock) {
-      if (stock.price > 0 && stock.amplitude >= 5 && stock.change > 0) {
-        if (stock.rangePos >= 80) {
-          stock.autoSetup = "auto_strong";
-        } else if (stock.rangePos >= 65) {
-          stock.autoSetup = "auto_pullback";
-        } else {
-          stock.autoSetup = "none";
-        }
-      } else {
+      if (stock.price <= 0) {
         stock.autoSetup = "none";
+      } else if (stock.amplitude >= 5 && stock.change > 0 && stock.rangePos >= 80) {
+        stock.autoSetup = "auto_strong";      // ⚡ 日內強勢
+      } else if (stock.amplitude >= 5 && stock.change > 0 && stock.rangePos >= 65) {
+        stock.autoSetup = "auto_pullback";    // ⚡ 潛在回調
+      } else if (stock.change < 0 || stock.rangePos < 50) {
+        stock.autoSetup = "auto_weak";        // 偏弱 / 下殺
+      } else {
+        stock.autoSetup = "auto_watch";       // 震盪觀察
       }
-      // 手動標記優先於自動訊號
+      // 手動標記優先於自動分類
       stock.setup = stock.manualSetup || stock.autoSetup;
     }
 
@@ -433,7 +438,6 @@
       const stock = stocks.find(s => s.code === code);
       if (!stock) return;
 
-      // 循環：自動預設(null) -> 手動潛在回調 -> 手動強勢領導 -> 回到自動預設(null)
       const order = [null, "pullback", "leader"];
       const next = order[(order.indexOf(stock.manualSetup) + 1) % order.length];
       stock.manualSetup = next;
@@ -456,12 +460,18 @@
         return `<span onclick="toggleSetup('${stock.code}')" class="badge setup-leader" title="手動標記：強勢領導（點擊切換）">強勢領導 ★</span>`;
       }
       if (stock.setup === "auto_strong") {
-        return `<span onclick="toggleSetup('${stock.code}')" class="badge setup-strong" title="系統自動識別：高振幅+日內收高（點擊可手動覆蓋）">⚡ 日內強勢</span>`;
+        return `<span onclick="toggleSetup('${stock.code}')" class="badge setup-strong" title="系統自動識別：高振幅+日內收高（點擊手動覆蓋）">⚡ 日內強勢</span>`;
       }
       if (stock.setup === "auto_pullback") {
-        return `<span onclick="toggleSetup('${stock.code}')" class="badge setup-pullback" title="系統自動識別：高振幅+站穩中軸上方（點擊可手動覆蓋）">⚡ 潛在回調</span>`;
+        return `<span onclick="toggleSetup('${stock.code}')" class="badge setup-pullback" title="系統自動識別：高振幅+站穩中軸上方（點擊手動覆蓋）">⚡ 潛在回調</span>`;
       }
-      return `<span onclick="toggleSetup('${stock.code}')" class="badge setup-none" title="點擊手動標記策略類型">+ 標記</span>`;
+      if (stock.setup === "auto_watch") {
+        return `<span onclick="toggleSetup('${stock.code}')" class="badge setup-watch" title="系統自動識別：上漲或站穩中軸上方（點擊手動覆蓋）">震盪觀察</span>`;
+      }
+      if (stock.setup === "auto_weak") {
+        return `<span onclick="toggleSetup('${stock.code}')" class="badge setup-weak" title="系統自動識別：當日下跌或位於區間下半部（點擊手動覆蓋）">偏弱 / 下殺</span>`;
+      }
+      return `<span onclick="toggleSetup('${stock.code}')" class="badge setup-none">待同步</span>`;
     }
 
     function formatChange(change) {
@@ -517,10 +527,11 @@
         </tr>
       `).join("");
 
+      const buySignalSetups = new Set(["auto_strong", "auto_pullback", "pullback", "leader"]);
       document.getElementById("totalStocks").textContent = stocks.length;
       document.getElementById("highAdrCount").textContent = stocks.filter(s => s.amplitude >= 5).length;
       document.getElementById("strongCloseCount").textContent = stocks.filter(s => s.price > 0 && s.rangePos >= 80 && s.change > 0).length;
-      document.getElementById("pullbackCount").textContent = stocks.filter(s => s.setup !== "none").length;
+      document.getElementById("pullbackCount").textContent = stocks.filter(s => buySignalSetups.has(s.setup)).length;
       document.getElementById("upCount").textContent = stocks.filter(s => s.change > 0).length;
       document.getElementById("downCount").textContent = stocks.filter(s => s.change < 0).length;
 
@@ -548,10 +559,12 @@
       filteredStocks = stocks.filter(s => {
         if (q && !s.code.includes(q) && !s.name.toLowerCase().includes(q)) return false;
         if (filter === "auto_strong") return s.setup === "auto_strong";
-        if (filter === "highamp") return s.amplitude >= 5;
-        if (filter === "strongpos") return s.price > 0 && s.rangePos >= 80 && s.change > 0;
         if (filter === "pullback") return s.setup === "pullback" || s.setup === "auto_pullback";
         if (filter === "leader") return s.setup === "leader";
+        if (filter === "auto_watch") return s.setup === "auto_watch";
+        if (filter === "auto_weak") return s.setup === "auto_weak";
+        if (filter === "highamp") return s.amplitude >= 5;
+        if (filter === "strongpos") return s.price > 0 && s.rangePos >= 80 && s.change > 0;
         if (filter === "active") return s.turnoverRaw >= 1e8;
         return true;
       });
@@ -583,9 +596,11 @@
       const setupLabelMap = {
         "auto_strong": "日內強勢 (自動)",
         "auto_pullback": "潛在回調 (自動)",
+        "auto_watch": "震盪觀察 (自動)",
+        "auto_weak": "偏弱 / 下殺 (自動)",
         "pullback": "潛在回調 (手動)",
         "leader": "強勢領導 (手動)",
-        "none": "未標記"
+        "none": "未報價"
       };
 
       const rows = filteredStocks.map(s => ({
@@ -600,7 +615,7 @@
         "日內區間位置 (%)": s.price > 0 ? Math.round(s.rangePos) : "",
         "日內最高": s.high > 0 ? Number(s.high.toFixed(3)) : "",
         "日內最低": s.low > 0 ? Number(s.low.toFixed(3)) : "",
-        "策略標記": setupLabelMap[s.setup] || "未標記",
+        "策略狀態分類": setupLabelMap[s.setup] || "未報價",
         "TradingView 連結": `https://www.tradingview.com/symbols/HKEX-${s.code}/`
       }));
 
@@ -608,14 +623,14 @@
       worksheet["!cols"] = [
         { wch: 10 }, { wch: 18 }, { wch: 12 }, { wch: 12 },
         { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 14 },
-        { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 46 }
+        { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 46 }
       ];
 
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "港股通掃描結果");
 
       const filterSelect = document.getElementById("filterSelect");
-      const filterText = filterSelect.options[filterSelect.selectedIndex].text.split(" ")[0].replace(/[：:]/g, "");
+      const filterText = filterSelect.options[filterSelect.selectedIndex].text.split(" ")[0].replace(/[：:⚡★]/g, "");
       const now = new Date();
       const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
       const timeStr = `${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
